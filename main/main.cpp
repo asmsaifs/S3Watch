@@ -22,6 +22,8 @@
 #include "audio_alert.h"
 #include "ble_sync.h"
 
+extern "C" void boot_selector_init(void);  // Force linker to include boot_selector.c
+
 static const char *TAG = "MAIN";
 
 /*
@@ -50,6 +52,9 @@ static void power_init(void) {
 }
 
 extern "C" void app_main(void) {
+
+  // Force boot_selector.c to be linked (constructor already ran before this!)
+  boot_selector_init();
 
   // esp_log_level_set("lcd_panel.io.spi", ESP_LOG_DEBUG);
 

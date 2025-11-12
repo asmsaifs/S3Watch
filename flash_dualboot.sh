@@ -72,7 +72,7 @@ python -m esptool \
 echo -e "\n${GREEN}✓ S3Watch firmware flashed to OTA_0${NC}"
 
 # Flash XiaoZhi if available
-if [ -f "xiaozhi-esp32/build/xiaozhi-esp32.bin" ]; then
+if [ -f "xiaozhi-esp32/build/xiaozhi.bin" ]; then
     echo -e "\n${BLUE}Flashing XiaoZhi-ESP32 to OTA_1...${NC}"
     python -m esptool \
         --chip esp32s3 \
@@ -84,7 +84,7 @@ if [ -f "xiaozhi-esp32/build/xiaozhi-esp32.bin" ]; then
         --flash_mode dio \
         --flash_freq 80m \
         --flash_size 32MB \
-        0xC20000 xiaozhi-esp32/build/xiaozhi-esp32.bin
+        0xC20000 xiaozhi-esp32/build/xiaozhi.bin
     
     echo -e "${GREEN}✓ XiaoZhi-ESP32 firmware flashed to OTA_1${NC}"
 else

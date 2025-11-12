@@ -1,9 +1,11 @@
 idf_component_register(
     SRCS
+        boot_selector.c
         lwmalloc.c
         main.cpp
     INCLUDE_DIRS "."
     REQUIRES ble_sync gui sensors settings bsp_extra esp_event audio_alert
+    PRIV_REQUIRES driver esp_partition app_update
 )
 
 ## enable the next line to upload the spiffs content

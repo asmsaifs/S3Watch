@@ -4,7 +4,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-XIAOZHI_DIR="$SCRIPT_DIR/../xiaozhi-esp32"
+XIAOZHI_DIR="$SCRIPT_DIR/xiaozhi-esp32"
 
 echo "========================================"
 echo "  XiaoZhi-ESP32 Setup Helper"
