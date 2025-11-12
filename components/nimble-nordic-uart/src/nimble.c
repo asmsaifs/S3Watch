@@ -46,6 +46,7 @@ static void (*_nordic_uart_callback)(enum nordic_uart_callback_type callback_typ
 static uart_receive_callback_t _uart_receive_callback = NULL;
 static bool s_low_power_pref = false;
 static bool s_adv_enabled = true;
+static bool s_ble_synced = false;
 
 
 /// @brief Apply connection parameters based on power preference
@@ -126,19 +127,17 @@ static int ble_app_advertise(void) {
         return 0;
     }
 
+    if (!s_ble_synced) {
+        ESP_LOGD(_TAG, "BLE stack not synced yet; advertising will start on sync");
+        return 0;
+    }
+
     struct ble_hs_adv_fields fields, fields_ext;
-    memset(&fields, 0, sizeof(fields));
-
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-
-    fields.tx_pwr_lvl_is_present = 1;
-    fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-
     const char* name = ble_svc_gap_device_name();
 
-    fields.uuids128_is_complete = 1;
-    fields.uuids128 = &SERVICE_UUID;
-    fields.num_uuids128 = 1;
+    // Main advertising packet: only flags (minimal to pass certification)
+    memset(&fields, 0, sizeof(fields));
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
 
     int err = ble_gap_adv_set_fields(&fields);
     if (err) {
@@ -146,14 +145,24 @@ static int ble_app_advertise(void) {
         return err;
     }
 
+    // Scan response: name and/or UUID (prioritize name, add UUID only if space permits)
     memset(&fields_ext, 0, sizeof(fields_ext));
-    fields_ext.flags = fields.flags;
     fields_ext.name = (uint8_t*)name;
     fields_ext.name_len = name ? strlen(name) : 0;
     fields_ext.name_is_complete = (fields_ext.name_len > 0);
+    
+    // Only add UUID if name is short enough (name + UUID must fit in ~31 bytes)
+    // 128-bit UUID takes 18 bytes, leave room for name
+    if (fields_ext.name_len <= 10) {
+        fields_ext.uuids128 = &SERVICE_UUID;
+        fields_ext.num_uuids128 = 1;
+        fields_ext.uuids128_is_complete = 1;
+    }
+    
     err = ble_gap_adv_rsp_set_fields(&fields_ext);
     if (err) {
-        ESP_LOGE(_TAG, "ble_gap_adv_rsp_set_fields fields_ext, name might be too long, err %d", err);
+        ESP_LOGW(_TAG, "ble_gap_adv_rsp_set_fields, err %d (continuing anyway)", err);
+        // Don't return error - advertising can still work without scan response
     }
 
     struct ble_gap_adv_params adv_params;
@@ -239,6 +248,7 @@ static void ble_app_on_sync_cb(void) {
     if (ret != 0) {
         ESP_LOGE(_TAG, "Error ble_hs_id_infer_auto: %d", ret);
     }
+    s_ble_synced = true;
     (void)ble_app_advertise();
 }
 
@@ -347,6 +357,7 @@ esp_err_t _nordic_uart_start(const char* device_name, void (*callback)(enum nord
 
 esp_err_t _nordic_uart_stop(void) {
     s_adv_enabled = false;
+    s_ble_synced = false;
     if (ble_conn_hdl != 0) {
         int term_rc = ble_gap_terminate(ble_conn_hdl, BLE_ERR_REM_USER_CONN_TERM);
         if (term_rc != 0) {

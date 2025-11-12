@@ -7,6 +7,7 @@
 #include "rtc_lib.h"
 #include <time.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include "esp_spiffs.h"
 #include "lvgl.h"

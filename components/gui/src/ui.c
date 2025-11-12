@@ -16,6 +16,7 @@
 #include "watchface.h"
 #include "batt_screen.h"
 #include "brightness_screen.h"
+#include "apps_screen.h"
 
 #include "batt_screen.h"
 #include "driver/gpio.h"
@@ -28,10 +29,12 @@ static lv_obj_t* tile1;
 static lv_obj_t* tile2;
 static lv_obj_t* tile3;
 static lv_obj_t* tile4;
+static lv_obj_t* tile5;
 
 static lv_obj_t* active_screen;
 static lv_obj_t* dynamic_tile = NULL; // temporary tile right of controls
 static lv_obj_t* dynamic_subtile = NULL; // second-level tile to the right of dynamic tile
+static lv_obj_t* dynamic_subtile_source = NULL; // track where dynamic_subtile was opened from
 
 
 lv_obj_t* get_main_screen(void) { return main_screen; }
@@ -92,21 +95,25 @@ void swatch_tileview(void)
   //lv_obj_add_event_cb(main_screen, tileview_change_cb, LV_EVENT_VALUE_CHANGED, NULL);
   lv_obj_add_event_cb(main_screen, tileview_change_cb, LV_EVENT_ALL, NULL);
 
-  /*Tile1:*/
+  /*Tile1: Notifications (top) */
   tile1 = lv_tileview_add_tile(main_screen, 0, 0, LV_DIR_BOTTOM);
   notifications_screen_create(tile1);
 
-  /*Tile2:*/
+  /*Tile2: Watchface (center) */
   tile2 = lv_tileview_add_tile(main_screen, 0, 1, (lv_dir_t)(LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_LEFT | LV_DIR_RIGHT));
   watchface_create(tile2);
 
-  /*Tile3:*/
-  //tile3 = lv_tileview_add_tile(main_screen, 0, 2, LV_DIR_TOP);
-  //steps_screen_create(tile3);
+  /*Tile3: Apps (bottom - swipe up from watchface) */
+  tile3 = lv_tileview_add_tile(main_screen, 0, 2, LV_DIR_TOP);
+  apps_screen_create(tile3);
 
-  /*Tile4:*/
-  tile4 = lv_tileview_add_tile(main_screen, 1, 1, (lv_dir_t)(LV_DIR_LEFT | LV_DIR_RIGHT));
+  /*Tile4: Control screen (right) */
+  tile4 = lv_tileview_add_tile(main_screen, 1, 1, LV_DIR_LEFT);
   control_screen_create(tile4);
+
+  /*Tile5: Steps (left) */
+  tile5 = lv_tileview_add_tile(main_screen, -1, 1, LV_DIR_RIGHT);
+  steps_screen_create(tile5);
 
 }
 
@@ -116,11 +123,23 @@ static void tileview_change_cb(lv_event_t* e)
   if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
   
   lv_obj_t* act = lv_tileview_get_tile_active(main_screen);
+  
+  // If we're leaving dynamic_subtile via swipe, go back to source
+  if (dynamic_subtile && act != dynamic_subtile && dynamic_subtile_source) {
+    ESP_LOGI(TAG, "Leaving dynamic subtile (3,1), returning to source");
+    lv_tileview_set_tile(main_screen, dynamic_subtile_source, LV_ANIM_ON);
+    lv_obj_del(dynamic_subtile);
+    dynamic_subtile = NULL;
+    dynamic_subtile_source = NULL;
+    return;
+  }
+  
   // Delete level-2 if not active
   if (dynamic_subtile && act != dynamic_subtile) {
     ESP_LOGI(TAG, "Auto-clean: deleting dynamic subtile (3,1)");
     lv_obj_del(dynamic_subtile);
     dynamic_subtile = NULL;
+    dynamic_subtile_source = NULL; // Clear source tracking
   }
   // Delete level-1 if neither level-1 nor level-2 are active
   if (dynamic_tile && act != dynamic_tile && act != dynamic_subtile) {
@@ -172,12 +191,15 @@ lv_obj_t* ui_dynamic_subtile_acquire(void) {
     lv_obj_clean(dynamic_subtile);
     return dynamic_subtile;
   }
-  dynamic_subtile = lv_tileview_add_tile(main_screen, 3, 1, (lv_dir_t)(LV_DIR_LEFT | LV_DIR_RIGHT));
+  // Only allow LEFT direction to force proper back navigation
+  dynamic_subtile = lv_tileview_add_tile(main_screen, 3, 1, LV_DIR_LEFT);
   if (dynamic_subtile) {
     //lv_obj_add_style(dynamic_subtile, &main_style, 0);
     //lv_obj_set_size(dynamic_subtile, LV_PCT(100), LV_PCT(100));   
     lv_obj_update_layout(main_screen); 
-    lv_obj_update_layout(dynamic_tile); 
+    if (dynamic_tile) {
+      lv_obj_update_layout(dynamic_tile);
+    }
     ESP_LOGI(TAG, "Created dynamic subtile (3,1)");
   }
   return dynamic_subtile;
@@ -191,6 +213,8 @@ void ui_dynamic_subtile_show(void) {
     load_screen(NULL, get_main_screen(), LV_SCR_LOAD_ANIM_NONE);
   }
   
+  // Remember where we came from
+  dynamic_subtile_source = lv_tileview_get_tile_active(main_screen);
   
   lv_tileview_set_tile(main_screen, dynamic_subtile, LV_ANIM_ON);
   lv_tileview_set_tile(main_screen, dynamic_subtile, LV_ANIM_ON);
@@ -201,11 +225,17 @@ void ui_dynamic_subtile_close(void) {
   if (!main_screen) return;
   if (dynamic_subtile) {
 
-    if (dynamic_tile) {
+    // Return to the source tile (where we opened from)
+    if (dynamic_subtile_source) {
+      lv_tileview_set_tile(main_screen, dynamic_subtile_source, LV_ANIM_ON);
+      dynamic_subtile_source = NULL;
+    }
+    else if (dynamic_tile) {
       lv_tileview_set_tile(main_screen, dynamic_tile, LV_ANIM_ON);
     }
-    else if (tile4) {
-      lv_tileview_set_tile(main_screen, tile4, LV_ANIM_ON);
+    else if (tile2) {
+      // Fallback to watchface
+      lv_tileview_set_tile(main_screen, tile2, LV_ANIM_ON);
     }
     ESP_LOGI(TAG, "Deleting dynamic subtile (3,1)");
     lv_obj_del(dynamic_subtile);
@@ -403,7 +433,7 @@ void ui_task(void* pvParameters) {
     NULL);
 
   // Start back button poller with a higher priority for snappier input
-  xTaskCreate(ui_back_btn_task, "ui_back_btn", 2048, NULL, 5, NULL);
+  xTaskCreate(ui_back_btn_task, "ui_back_btn", 4096, NULL, 5, NULL);
 
   // Periodic fallback: refresh power state every 5s in case no events fire
   lv_timer_t* t = lv_timer_create(power_poll_cb, 5000, NULL);
