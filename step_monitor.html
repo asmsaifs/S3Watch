@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S3Watch Step Monitor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .step-display {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .step-count {
+            font-size: 72px;
+            font-weight: bold;
+            color: #00D9FF;
+            margin: 20px 0;
+        }
+        .activity {
+            font-size: 24px;
+            color: #666;
+            margin: 10px 0;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .connect-btn {
+            background: #00D9FF;
+            color: white;
+        }
+        .connect-btn:hover {
+            background: #00B8DD;
+        }
+        .disconnect-btn {
+            background: #ff4444;
+            color: white;
+        }
+        .disconnect-btn:hover {
+            background: #dd2222;
+        }
+        .query-btn {
+            background: #4CAF50;
+            color: white;
+        }
+        .query-btn:hover {
+            background: #45a049;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            color: #666;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏃 S3Watch Step Monitor</h1>
+        
+        <div id="status" class="status disconnected">
+            Disconnected
+        </div>
+
+        <button id="connectBtn" class="connect-btn">Connect to S3Watch</button>
+        <button id="disconnectBtn" class="disconnect-btn hidden">Disconnect</button>
+        <button id="queryBtn" class="query-btn hidden">Query Steps Now</button>
+
+        <div class="step-display">
+            <div class="step-count" id="stepCount">-</div>
+            <div>steps</div>
+            <div class="activity" id="activity">-</div>
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry">Ready to connect...</div>
+        </div>
+    </div>
+
+    <script>
+        const NORDIC_UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const NORDIC_UART_TX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        const NORDIC_UART_RX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+        let device = null;
+        let txCharacteristic = null;
+        let rxCharacteristic = null;
+
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const queryBtn = document.getElementById('queryBtn');
+        const stepCountDiv = document.getElementById('stepCount');
+        const activityDiv = document.getElementById('activity');
+
+        function log(message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(message, className) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function handleNotification(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            log(`Received: ${value}`);
+            
+            try {
+                const data = JSON.parse(value);
+                if (data.steps !== undefined) {
+                    stepCountDiv.textContent = data.steps;
+                    if (data.activity) {
+                        activityDiv.textContent = data.activity.charAt(0).toUpperCase() + data.activity.slice(1);
+                    }
+                }
+            } catch (e) {
+                // Not JSON or not step data
+            }
+        }
+
+        async function connect() {
+            try {
+                log('Requesting Bluetooth device...');
+                device = await navigator.bluetooth.requestDevice({
+                    // Accept all devices and let user choose
+                    acceptAllDevices: true,
+                    optionalServices: [NORDIC_UART_SERVICE_UUID]
+                });
+
+                log(`Connecting to ${device.name}...`);
+                const server = await device.gatt.connect();
+                
+                log('Getting Nordic UART Service...');
+                const service = await server.getPrimaryService(NORDIC_UART_SERVICE_UUID);
+                
+                log('Getting characteristics...');
+                txCharacteristic = await service.getCharacteristic(NORDIC_UART_TX_CHAR_UUID);
+                rxCharacteristic = await service.getCharacteristic(NORDIC_UART_RX_CHAR_UUID);
+                
+                log('Starting notifications...');
+                await rxCharacteristic.startNotifications();
+                rxCharacteristic.addEventListener('characteristicvaluechanged', handleNotification);
+                
+                updateStatus(`Connected to ${device.name}`, 'connected');
+                connectBtn.classList.add('hidden');
+                disconnectBtn.classList.remove('hidden');
+                queryBtn.classList.remove('hidden');
+                
+                log('Connected! Waiting for step updates...');
+                
+                // Request initial step count
+                setTimeout(() => querySteps(), 1000);
+                
+            } catch (error) {
+                log(`Error: ${error}`);
+                updateStatus('Connection failed', 'disconnected');
+            }
+        }
+
+        async function disconnect() {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+                log('Disconnected');
+                updateStatus('Disconnected', 'disconnected');
+                connectBtn.classList.remove('hidden');
+                disconnectBtn.classList.add('hidden');
+                queryBtn.classList.add('hidden');
+                stepCountDiv.textContent = '-';
+                activityDiv.textContent = '-';
+            }
+        }
+
+        async function querySteps() {
+            if (!txCharacteristic) {
+                log('Not connected');
+                return;
+            }
+            
+            try {
+                const message = '{"steps":"query"}\n';
+                const encoder = new TextEncoder();
+                await txCharacteristic.writeValue(encoder.encode(message));
+                log('Queried step count');
+            } catch (error) {
+                log(`Error querying steps: ${error}`);
+            }
+        }
+
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        queryBtn.addEventListener('click', querySteps);
+    </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ static lv_obj_t* app_container = NULL;
 static lv_obj_t* step_label = NULL;
 static lv_obj_t* activity_label = NULL;
 static lv_obj_t* progress_arc = NULL;
+static lv_obj_t* debug_label = NULL;
 static lv_timer_t* update_timer = NULL;
 
 #define DAILY_STEP_GOAL 10000
@@ -43,6 +44,7 @@ static void container_delete_event_cb(lv_event_t* e)
         step_label = NULL;
         activity_label = NULL;
         progress_arc = NULL;
+        debug_label = NULL;
         app_container = NULL;
     }
 }
@@ -51,12 +53,16 @@ static void update_step_display(lv_timer_t* timer)
 {
     (void)timer;
     
-    if (!app_container || !step_label || !activity_label || !progress_arc) {
+    if (!app_container || !step_label || !activity_label || !progress_arc || !debug_label) {
         return;
     }
 
     uint32_t steps = sensors_get_step_count();
     sensors_activity_t activity = sensors_get_activity();
+    
+    // Get debug sensor data
+    float ax, ay, az, mag, lp;
+    sensors_get_debug_info(&ax, &ay, &az, &mag, &lp);
 
     // Update step count
     char step_buf[32];
@@ -70,9 +76,16 @@ static void update_step_display(lv_timer_t* timer)
     uint16_t progress = (steps * 100) / DAILY_STEP_GOAL;
     if (progress > 100) progress = 100;
     lv_arc_set_value(progress_arc, progress);
+    
+    // Update debug info
+    char debug_buf[128];
+    snprintf(debug_buf, sizeof(debug_buf), 
+             "X:%.0f Y:%.0f Z:%.0f\nMag:%.0f LP:%.1f", 
+             ax, ay, az, mag, lp);
+    lv_label_set_text(debug_label, debug_buf);
 
-    ESP_LOGD(TAG, "Steps: %lu, Activity: %s, Progress: %d%%", 
-             (unsigned long)steps, activity_to_string(activity), progress);
+    ESP_LOGD(TAG, "Steps: %lu, Activity: %s, Progress: %d%%, LP: %.1f", 
+             (unsigned long)steps, activity_to_string(activity), progress, lp);
 }
 
 void app_step_counter_create(lv_obj_t* parent)
@@ -140,7 +153,15 @@ void app_step_counter_create(lv_obj_t* parent)
     lv_label_set_text(goal_label, goal_buf);
     lv_obj_set_style_text_font(goal_label, &font_normal_26, 0);
     lv_obj_set_style_text_color(goal_label, lv_color_hex(0x606060), 0);
-    lv_obj_align(goal_label, LV_ALIGN_BOTTOM_MID, 0, -40);
+    lv_obj_align(goal_label, LV_ALIGN_BOTTOM_MID, 0, -80);
+    
+    // Debug info label (shows accelerometer values)
+    debug_label = lv_label_create(app_container);
+    lv_label_set_text(debug_label, "X:0 Y:0 Z:0\nMag:0 LP:0");
+    lv_obj_set_style_text_font(debug_label, &font_normal_26, 0);
+    lv_obj_set_style_text_color(debug_label, lv_color_hex(0x808080), 0);
+    lv_obj_set_style_text_align(debug_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(debug_label, LV_ALIGN_BOTTOM_MID, 0, -30);
 
     // Create LVGL timer to update display every second
     update_timer = lv_timer_create(update_step_display, 1000, NULL);
@@ -166,6 +187,7 @@ void app_step_counter_destroy(void)
     step_label = NULL;
     activity_label = NULL;
     progress_arc = NULL;
+    debug_label = NULL;
     
     if (app_container) {
         lv_obj_del(app_container);

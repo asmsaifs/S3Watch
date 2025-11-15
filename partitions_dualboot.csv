@@ -1,12 +1,14 @@
 # Dual-Boot Partition Table for S3Watch + XiaoZhi-ESP32 (32MB Flash)
-# Name,       Type, SubType,  Offset,     Size,       Flags
-nvs,          data, nvs,      0x9000,     0x6000,
-phy_init,     data, phy,      0xf000,     0x1000,
+# Name,          Type, SubType,  Offset,     Size,       Flags
+nvs,             data, nvs,      0x9000,     0x6000,
+phy_init,        data, phy,      0xf000,     0x1000,
 # OTA data partition - stores which firmware to boot
-otadata,      data, ota,      0x10000,    0x2000,
+otadata,         data, ota,      0x10000,    0x2000,
 # OTA_0: S3Watch (your smartwatch firmware) - 12MB
-ota_0,        app,  ota_0,    0x20000,    0xC00000,
+ota_0,           app,  ota_0,    0x20000,    0xC00000,
 # OTA_1: XiaoZhi AI Assistant - 12MB
-ota_1,        app,  ota_1,    0xC20000,   0xC00000,
-# Storage for settings and data - 7MB
-storage,      data, spiffs,   0x1820000,  0x700000,
+ota_1,           app,  ota_1,    0xC20000,   0xC00000,
+# S3Watch SPIFFS data (settings.json, etc) - 512KB
+storage,    data, spiffs,   0x1820000,  0x80000,
+# XiaoZhi Assets (custom binary format with index.json) - 6.5MB
+assets,          data, spiffs,   0x18A0000,  0x680000,

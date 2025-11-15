@@ -16,6 +16,8 @@ void sensors_task(void *pvParameters);
 uint32_t sensors_get_step_count(void);
 // Returns current activity classification
 sensors_activity_t sensors_get_activity(void);
+// Get debug info for display
+void sensors_get_debug_info(float *ax, float *ay, float *az, float *mag, float *lp);
 
 #ifdef __cplusplus
 }

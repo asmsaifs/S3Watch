@@ -18,6 +18,7 @@ NC='\033[0m' # No Color
 
 # Step 1: Build S3Watch firmware with custom bootloader (OTA_0)
 echo -e "\n${BLUE}[1/2] Building S3Watch firmware with custom bootloader (OTA_0)...${NC}"
+idf.py set-target esp32s3
 idf.py -D SDKCONFIG_DEFAULTS=sdkconfig.dualboot fullclean reconfigure build
 echo -e "${GREEN}✓ S3Watch firmware built with custom bootloader${NC}"
 

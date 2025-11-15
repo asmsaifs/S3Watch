@@ -17,23 +17,45 @@ echo "======================================"
 echo "  S3Watch Dual-Boot Flash Script"
 echo "======================================"
 
-# Detect serial port
+# Detect serial port (macOS/Linux)
 PORT=""
-if [ -e /dev/cu.usbmodem* ]; then
-    PORT=$(ls /dev/cu.usbmodem* | head -n 1)
-elif [ -e /dev/ttyUSB* ]; then
-    PORT=$(ls /dev/ttyUSB* | head -n 1)
+
+# Allow manual port override (arg takes precedence)
+if [ -n "$1" ]; then
+    PORT="$1"
+fi
+
+if [ -z "$PORT" ]; then
+    # Try common macOS device names first
+    for pattern in \
+        /dev/cu.usbmodem* \
+        /dev/cu.usbserial* \
+        /dev/cu.SLAB_USBtoUART* \
+        /dev/cu.wchusbserial* \
+        /dev/tty.usbmodem* \
+        /dev/tty.usbserial*; do
+        for dev in $pattern; do
+            if [ -e "$dev" ]; then PORT="$dev"; break; fi
+        done
+        [ -n "$PORT" ] && break
+    done
+fi
+
+if [ -z "$PORT" ]; then
+    # Try common Linux device names
+    for pattern in /dev/ttyUSB* /dev/ttyACM*; do
+        for dev in $pattern; do
+            if [ -e "$dev" ]; then PORT="$dev"; break; fi
+        done
+        [ -n "$PORT" ] && break
+    done
 fi
 
 if [ -z "$PORT" ]; then
     echo -e "${RED}Error: No serial port detected!${NC}"
-    echo "Please specify port manually: $0 /dev/ttyUSB0"
+    echo "Usage: $0 <PORT>"
+    echo "Examples: $0 /dev/cu.usbserial-0001  |  $0 /dev/ttyUSB0"
     exit 1
-fi
-
-# Allow manual port override
-if [ ! -z "$1" ]; then
-    PORT="$1"
 fi
 
 echo -e "${BLUE}Using serial port: ${PORT}${NC}"
@@ -93,10 +115,10 @@ else
     echo "Then run this script again to flash OTA_1"
 fi
 
-# Flash storage if available
+# Flash S3Watch SPIFFS (storage) if available
 if [ -f "build/storage.bin" ]; then
-    STORAGE_OFFSET="0x1820000"  # 32MB flash: after OTA_1 (12MB each)
-    echo -e "\n${BLUE}Flashing storage partition...${NC}"
+    storage_OFFSET="0x1820000"  # 32MB layout: storage (512KB)
+    echo -e "\n${BLUE}Flashing S3Watch SPIFFS (storage) at ${storage_OFFSET}...${NC}"
     python -m esptool \
         --chip esp32s3 \
         --port "$PORT" \
@@ -104,8 +126,32 @@ if [ -f "build/storage.bin" ]; then
         write_flash \
         --flash_mode dio \
         --flash_freq 80m \
-        $STORAGE_OFFSET build/storage.bin
-    echo -e "${GREEN}✓ Storage partition flashed${NC}"
+        $storage_OFFSET build/storage.bin
+    echo -e "${GREEN}✓ S3Watch SPIFFS flashed${NC}"
+else
+    echo -e "\n${YELLOW}⚠ build/storage.bin not found — skipping S3Watch SPIFFS${NC}"
+fi
+
+# Flash XiaoZhi assets partition (assets)
+ASSETS_OFFSET="0x18A0000"   # 32MB layout: assets (10MB)
+ASSETS_BIN="xiaozhi-esp32/assets.bin"
+if [ ! -f "$ASSETS_BIN" ] && [ -f "xiaozhi-esp32/build/generated_assets.bin" ]; then
+    ASSETS_BIN="xiaozhi-esp32/build/generated_assets.bin"
+fi
+
+if [ -f "$ASSETS_BIN" ]; then
+    echo -e "\n${BLUE}Flashing XiaoZhi assets (${ASSETS_BIN}) at ${ASSETS_OFFSET}...${NC}"
+    python -m esptool \
+        --chip esp32s3 \
+        --port "$PORT" \
+        --baud 921600 \
+        write_flash \
+        --flash_mode dio \
+        --flash_freq 80m \
+        $ASSETS_OFFSET "$ASSETS_BIN"
+    echo -e "${GREEN}✓ XiaoZhi assets flashed${NC}"
+else
+    echo -e "\n${YELLOW}⚠ XiaoZhi assets not found (looked for xiaozhi-esp32/assets.bin and build/generated_assets.bin) — skipping assets${NC}"
 fi
 
 echo -e "\n${GREEN}======================================"
